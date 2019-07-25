@@ -2,12 +2,13 @@ import { app, BrowserWindow, dialog, shell } from 'electron'
 const Menu = require('electron').Menu
 const {ipcMain} = require('electron')
 
+import pkg from '../../package.json'
 import checkUpdate from '../shared/updateChecker'
 import {checkFirstTime} from '../shared/first'
 checkFirstTime()
 
 import log from '../shared/logger'
-import {downloadUrl } from '../shared/config'
+import {downloadUrl, gnodeOption} from '../shared/config'
 
 /**
  * Set `__static` path to static files in production
@@ -17,7 +18,6 @@ if (process.env.NODE_ENV !== 'development') {
   global.__static = require('path').join(__dirname, '/static').replace(/\\/g, '\\\\')
 }
 
-log.debug("Platform:"+process.platform)
 let mainWindow
 let firstQuit = true
 let firstClose = true
@@ -33,7 +33,7 @@ function createWindow () {
   mainWindow = new BrowserWindow({
     title: 'Niffler Wallet',
     center: true,
-    height: 480,
+    height: 500,
     useContentSize: true,
     width: 600,
     resizable:false,
@@ -43,17 +43,18 @@ function createWindow () {
   })
 
   mainWindow.loadURL(winURL)
-  
-  if (process.platform == 'win32') {
+
+  if (process.platform != 'darwin') {
     mainWindow.on('close', (e)=>{
+      mainWindow.webContents.send('before-quit');
       if(firstClose){
-        mainWindow.webContents.send('before-quit');
         e.preventDefault()
         firstClose = false
-        setTimeout(()=>{
-          log.debug('close now')
-          if(mainWindow)mainWindow.close()}, 500)
-      }      
+      }
+
+      setTimeout(()=>{
+        log.debug('close now')
+        if(mainWindow)mainWindow.close()}, 800)
     })
 
     mainWindow.setMenu(null)
@@ -85,30 +86,48 @@ async function launch(){
   }
 } 
 
+
+var shouldQuit = app.makeSingleInstance(function (commandLine, workingDirectory) {
+  // Someone tried to run a second instance, we should focus our window.
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+if (shouldQuit) {
+  app.quit();
+}
+
 app.on('ready', ()=>{
   createWindow()
-  createMenu()
+  if (process.platform === 'darwin') {
+    createMenu()
+  }
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  log.debug('window-all-closed')
+  //if (process.platform !== 'darwin') {
+  app.quit()
+  //}
 })
 
 app.on('before-quit', (event)=>{
   log.debug('before-quit')
-  
+
   if(mainWindow){
+    mainWindow.webContents.send('before-quit');
+
     if(firstQuit){
-      mainWindow.webContents.send('before-quit');
       event.preventDefault()
       firstQuit = false
-      setTimeout(()=>{
-        log.debug('quit now')
-        app.quit()}, 500)
-      }
     }
+
+    setTimeout(()=>{
+      log.debug('quit now')
+      app.quit()}, 800)
+  }
 })
 
 app.on('activate', () => {

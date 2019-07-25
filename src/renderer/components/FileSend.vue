@@ -4,7 +4,7 @@
   <div class="modal-background" @click="closeModal"></div>
   <div class="modal-card" style="width:480px">
     <header class="modal-card-head">
-      <p class="modal-card-title is-size-4 has-text-link">{{ $t("msg.send") }}</p>
+      <p class="modal-card-title is-size-4 has-text-link has-text-weight-semibold">{{ $t("msg.send") }}</p>
       <button class="delete" aria-label="close" @click="closeModal"></button>
     </header>
     <section class="modal-card-body" style="height:300px;background-color: whitesmoke;">
@@ -18,7 +18,7 @@
           <input class="input" type="text" v-model="amount" placeholder="1 ツ">
         </div>
       </div>
-      <br/>
+       <br/>
       <div class="field is-grouped">
         <div class="control">
           <button class="button is-link" @click="send">{{ $t("msg.fileSend.createTxFile") }}</button>
@@ -48,6 +48,7 @@ export default {
     return {
       errors: [],
       amount: null,
+      slateVersion: 0
     }
   },
   watch: {
@@ -69,9 +70,19 @@ export default {
       if (!this.amount || !this.validAmount(this.amount)) {
         this.errors.push(this.$t('msg.fileSend.WrongAmount'));
       }
+      if (this.amount && this.validAmount(this.amount) && !this.enough(this.amount)) {
+        this.errors.push(this.$t('msg.fileSend.NotEnough'));
+      }
       if (!this.errors.length) {
         return true;
       }
+    },
+    enough(amount){
+      let spendable = this.$dbService.getSpendable()
+      if(spendable){
+        return spendable >= parseFloat(amount) + 0.01 //0.008
+      }
+      return false
     },
     send(){
       if(this.checkForm()){
@@ -86,21 +97,39 @@ export default {
           "dest": fn_output,
           "max_outputs": 500,
           "num_change_outputs": 1,
-          "selection_strategy_is_use_all": true
+          "selection_strategy_is_use_all": true,
         }
         this.$walletService.issueSendTransaction(tx_data).then(
           (res) => {
             if (fn_output){
-              fs.writeFileSync(fn_output, JSON.stringify(res.data))
-              this.$log.debug('new send tx file generated')
-              messageBus.$emit('update')
-              this.closeModal()
+              let slate = res.data.result.Ok
+              fs.writeFileSync(fn_output, JSON.stringify(slate))
+              this.$walletService.lock_outputs(slate, 0).then(
+                (res) =>{
+                  this.$log.debug('new send tx file generated')
+                  messageBus.$emit('update')
+                  this.closeModal()
+                }).catch((error) => {
+                  this.$log.error('error when try to lock output:' + error)
+              })
             }
           }).catch((error) => {
             this.$log.error('issueSendTransaction error:' + error)
             this.errors.push(this.$t('msg.fileSend.CreateFailed'))
           })
         }
+        //if (fn_output){
+        //  this.$walletService.send(this.amount, 'file', fn_output, parseInt(this.slateVersion)).then(
+        //    (res) => {
+        //        this.$log.debug('send return: '+res)
+        //        messageBus.$emit('update')
+        //        this.closeModal()
+        //    }).catch((error) => {
+        //      this.$log.error('send error:' + error)
+        //      this.errors.push(this.$t('msg.fileSend.CreateFailed'))
+        //    })
+        //  }
+        //}
       },
 
     closeModal() {
@@ -111,6 +140,7 @@ export default {
     clearup(){
       this.errors = []
       this.amount = null
+      this.slateVersion = 0
       this.address = ''
     },
     

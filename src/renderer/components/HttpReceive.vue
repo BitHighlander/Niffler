@@ -4,7 +4,7 @@
   <div class="modal-background" @click="closeModal"></div>
   <div class="modal-card" style="width:480px">
     <header class="modal-card-head">
-      <p class="modal-card-title is-size-4 has-text-link">{{ $t("msg.receive") }}(HTTP/HTTPS)</p>
+      <p class="modal-card-title is-size-4 has-text-link has-text-weight-semibold">{{ $t("msg.receive") }}(HTTP/HTTPS)</p>
       <button class="delete" aria-label="close" @click="closeModal"></button>
     </header>
     <section class="modal-card-body" style="height:380px;background-color: whitesmoke;">
@@ -27,36 +27,42 @@
 
       </div>
       <div v-else>
-        <div class="message is-warning">
-          <div class="message-header"><p>{{ $t("msg.httpReceive.attention") }}</p></div>
-          <div class="message-body">
-            <p>{{ $t("msg.httpReceive.reachableMsg") }}</p>
-            <!--<p>{{ $t("msg.httpReceive.frp") }}</p>-->
-          </div>
-        </div>
         <div class="notification is-warning" v-if="errors.length">
           <p v-for="error in errors">{{ error }}</p>
         </div>
-        
+        <div class="center" v-show="errors.length>0">
+          <a class="button is-link is-outlined" v-if="errors.length" @click="closeModal">OK</a>
+        </div>
+
+        <div v-show="errors.length==0">
+          <div class="message is-warning">
+            <div class="message-header"><p>{{ $t("msg.httpReceive.attention") }}</p></div>
+            <div class="message-body">
+              <p>{{ $t("msg.httpReceive.reachableMsg") }}</p>
+            </div>
+          </div>
+          <!--
           <div class="field">
             <label class="label">{{ $t("msg.httpReceive.password") }}</label>
             <div class="control">
               <input class="input" type="password" placeholder="********" required
                 :class="{'is-warning': errors.length>0}" v-model="password">
             </div>
-          </div>
-          <br/>
-
-          <div class="field is-grouped">
-            <div class="control">
-              <button class="button is-link" v-bind:class="{'is-loading':starting}" @click="start">
-                {{ $t("msg.httpReceive.start") }}
-              </button>
+          </div>-->
+          
+          <div class="center">
+            <div class="field is-grouped ">
+              <div class="control">
+                <button class="button is-link" v-bind:class="{'is-loading':starting}" @click="start">
+                  {{ $t("msg.httpReceive.start") }}
+                </button>
+              </div>
+              <div class="control">
+                <button class="button is-text" @click="closeModal">{{ $t("msg.cancel") }}</button>
+              </div>
             </div>
-            <div class="control">
-              <button class="button is-text" @click="closeModal">{{ $t("msg.cancel") }}</button>
-            </div>
           </div>
+        </div>
       </div>
     </section>
   </div>
@@ -65,10 +71,18 @@
 </template>
 <script>
 import { messageBus } from '@/messagebus'
-import { setTimeout } from 'timers';
+import {grinNode, grinLocalNode} from '../../shared/config'
+
 const fs = require('fs');
 const publicIp = require('public-ip');
 const extIP = require('external-ip');
+const externalip = require('externalip')
+
+function isValidIP(str) {
+  const octet = '(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)';
+  const regex = new RegExp(`^${octet}\\.${octet}\\.${octet}\\.${octet}$`);
+  return regex.test(str);
+}
 
 export default {
   name: "http-receive",
@@ -81,43 +95,34 @@ export default {
   data() {
     return {
       errors: [],
-      password:'',
       starting:false,
       started:false,
+      localReachable: false,
       running:false,
       ip: this.$t('msg.httpReceive.ip')
     }
   },
-  watch: {
-    errors:function(newVal, oldVal){
-      if(newVal.length > 0){
-        setTimeout(()=>this.errors = [], 
-        4*1000)
-      }
-    },
-
-  },
   mounted() {
     this.checkRunning()
-    this.getIP()
   },
-
   methods: {
     start(){
-      if(this.password!=''&&!this.starting&&!this.running){
+      let gnode = grinNode
+      if(this.$dbService.getGnodeLocation() == 'local')gnode=grinLocalNode
+      if((!this.starting)&&(!this.running)){
         this.starting = true
-        this.$walletService.startListen(this.password)
-        setTimeout(()=>{
-          this.checkRunning()
-          this.$log.debug('start listen running?'+this.running)
-          if(!this.running){
-            this.errors.push(this.$t('msg.httpReceive.failed'))
+        this.checklocalReachable().catch((error)=>{
+          if(!error.response){
+            this.$walletService.startListen(gnode)
           }
-          }, 500)
-        }
+          this.$log.debug('Http listen is locally reachable.')
+          this.$log.debug('checkRunning right now.')
+          setTimeout(()=>this.checkRunning(), 1.5*1000)
+        })
+      }
     },
     stop(){
-      this.$walletService.stopListen()
+      this.$walletService.stopProcess('listen')
       this.running = false
       this.closeModal()
     },
@@ -128,73 +133,81 @@ export default {
     
     clearup(){
       this.errors = []
-      this.password = ''
       this.starting = false
       this.started = false
     },
 
+    getIP(log){
+      return new Promise(function(resolve, reject) {
+        publicIp.v4().then((ip)=>{
+          return resolve(ip)
+        }).catch((err)=>{
+          log.error('Failed to get ip use publicIp: ' + err)
+          externalip(function (err, ip) {
+          if(ip){
+            return resolve(ip)
+          }else{
+            log.error('Failed to get ip use externalip: ' + err)
+            return reject(err)
+          }  
+        })})
+      })   
+    },
+
+    checklocalReachable(){
+      const url = 'http://127.0.0.1:3415'
+      this.$log.debug('Try to test if http listen locally reachable?')
+      return this.$http.get(url, {timeout: 5000})
+    },
+    
     checkRunning(){
-      const url = 'http://localhost:3415'
-      this.$http.get(url).catch((error)=>{
-        if(error.response){
-          this.running = true
-          if(this.starting){
-            this.started = true
-            this.starting = false
-            if(this.ip === ''){
-              this.getIP()
-            }
-          }
-        }else{
-          if(this.starting){
-            this.starting = false
-          }
-          this.running = false
+      this.checklocalReachable().catch((err)=>{
+        if(err.response){
+          this.localReachable = true
         }
       })
-    },
-
-    getIP(){
-      this.getMyIP2()
-      setTimeout(()=>{
-        if(this.ip===''){
-          this.getMyIP()
-        }
-      }, 1000)
-    },
-
-    getMyIP(){
-      (async () => {
-        try{
-          this.ip = await publicIp.v4();
-          this.$log.debug('this host ip:' + this.ip)
-        }catch(e){
-          this.$log.error('error when getIP:' + e)
-          this.ip = await publicIp.v4({'https':true});
-          this.$log.debug('this host ip (getip use https):' + this.ip)
-        }
-      })();
-    },
-
-    getMyIP2(){
-      let getIP = extIP({
-          replace: true,
-          services: ['https://ipinfo.io/ip', 'http://ifconfig.io/ip'],
-          timeout: 600,
-          getIP: 'parallel',
-          userAgent: 'Chrome 15.0.874 / Mac OS X 10.8.1'
-      });
-      getIP((err, ip) => {
-        if (err) {
-           this.$log.error('error when getmyip2:' + err)
-           return
-        }
+      this.getIP(this.$log).then((ip)=>{
         this.ip = ip
-        this.$log.debug('this host ip when getmyip2:' + this.ip)
-      });
+        this.$log.debug('Get ip: ' + ip)
+        const url = `http://${ip}:3415`
+        this.$log.debug(`Try to test ${url} ?`)
+        this.$http.get(url, {timeout: 4000}).catch((error)=>{
+          if(error.response){
+            this.running = true
+            if(this.starting){
+              this.started = true
+              this.starting = false
+            }
+            this.$log.debug('wallet HTTP listen works.')
+          }else{
+            if(this.starting){
+              this.starting = false
+              if(this.localReachable){
+                this.errors.push(this.$t('msg.httpReceive.failed4'))
+              }else{
+                this.errors.push(this.$t('msg.httpReceive.failed2'))
+              }
+            }
+            this.running = false
+            this.$log.debug('Failed to connect ', url)
+          }
+        })
+      }).catch(
+        (err)=>{
+          this.$log.error('Error when try to get ip: ' + err)
+          this.errors.push(this.$t('msg.httpReceive.failed3'))
+          this.starting = false
+          this.running = false
+        }
+      )
     }
   }
 }
 </script>
 <style>
+.center{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 </style>

@@ -25,15 +25,27 @@
 
       </div>
 
-      <div v-for="ct in current_commits" style="margin-top: 20px">
+      <div v-for="(ct, index) in current_commits" :key="ct.id" style="margin-top: 20px">
         <div class="level">
           <div class="level-left">
             <div>
-              <p class="title is-6 is-marginless">
+              <p class="title is-6 is-marginless" @mouseover="(event)=>mouseover(index)" @mouseleave="mouseLeave" >
                 <span v-if="ct.status=='Unconfirmed'" >{{ct.commit| truncate(35)}}</span>
-                <a v-else @click="open(`http://grin-fans.org/commit/${ct.commit}`)">{{ct.commit| truncate(35)}}</a>
+                <a v-else @click="open(`https://grin-fans.org/commit/${ct.commit}`)">{{ct.commit| truncate(35)}}</a>
+                &nbsp;&nbsp;&nbsp;&nbsp;
+                <span v-if="showCopy===index" @click="copy(index)">
+                  <icon name="copy" scale="0.85" ></icon>
+                </span>
+                <span v-if="copied===index">
+                  <span class="tag is-black" style="font-size:0.7rem">{{ $t("msg.commit.copied") }}</span>
+                </span>
+                &nbsp;&nbsp;&nbsp;&nbsp;
+
               </p>
-              <small>{{ $t("msg.commit.heightCreated") }}: {{ct.height}} </small>
+              <small>{{ $t("msg.commit.heightCreated") }}: 
+                <span  v-if="ct.status=='Unconfirmed'">{{ct.height}}</span>
+                <a v-else @click="open(`https://grin-fans.org/block/${ct.height}`)">{{ct.height}}</a>
+              </small>
             </div>
           </div>
           <div class="level-right">
@@ -69,7 +81,7 @@
         &nbsp;&nbsp;
         <input v-model="jump_to" @keyup.enter="jump" class="input is-link is-small level-item" placeholder="2" style="width:30px">
         <button class="button is-link is-small is-outlined level-item">
-          <span class="is-size-7" @click="jump">跳转</span>
+          <span class="is-size-7" @click="jump">{{ $t("msg.jump") }}</span>
         </button>
         </div>
       </div>
@@ -82,6 +94,7 @@
 
 <script>
   import { messageBus } from '@/messagebus'
+  const clipboard = require('electron').clipboard
 
   export default {
     name: 'commit',
@@ -106,6 +119,8 @@
         jump_to: 2,
         keyword: "",
         searched: false,
+        showCopy: -1,
+        copied: -1
       }
     },
     mounted () {
@@ -117,10 +132,26 @@
     },
 
     methods: {
+      mouseover(index){
+        if(this.copied===-1){
+          this.showCopy = index
+        }
+      },
+      mouseLeave(){
+        this.showCopy = -1,
+        this.copied =  -1
+      },
+      copy(index){
+        let ct = this.current_commits[index]
+        clipboard.writeText(ct.commit)
+        this.copied = index
+        this.showCopy = -1
+      },
+      
       getCommits() {
-        this.$walletService.getCommits(false)
-          .then( (res) => {
-            this.total_commits = this.processCommits(res.data[1].reverse())
+        this.$walletService.getCommits(false, true, null)
+          .then((res) => {
+            this.total_commits = this.processCommits(res.data.result.Ok[1].reverse())
            
             this.current_commits = this.total_commits.slice(0, this.count_per_page)
             if (this.total_commits.length%this.count_per_page ==0){
@@ -141,7 +172,7 @@
       processCommits(cts){
         let nodeHeight = this.nodeHeight
         let cts_processed = cts.map(function(ct){
-          let c = ct[0]
+          let c = ct['output']
           if( c.status === 'Unspent' && nodeHeight>0){
             c.confirmed_count = nodeHeight - c.height + 1
             if(c.confirmed_count < 10){

@@ -4,19 +4,19 @@
   <div class="modal-background" @click="closeModal"></div>
   <div class="modal-card" style="width:480px">
     <header class="modal-card-head">
-      <p class="modal-card-title is-size-4 has-text-link">{{ $t("msg.finalize.finalize") }}</p>
+      <p class="modal-card-title is-size-4 has-text-link has-text-weight-semibold">{{ $t("msg.finalize.finalize") }}</p>
       <button class="delete" aria-label="close" @click="closeModal"></button>
     </header>
     <section class="modal-card-body" style="height:320px;background-color: whitesmoke;">
       
       <div class="notification is-warning" v-if="errors.length">
-        <p v-for="error in errors">{{ error }}</p>
+        <p v-for="error in errors" :key="error.id">{{ error }}</p>
       </div>
       <div class="center">
         <a class="button is-link is-outlined" v-if="errors.length" @click="clearup">{{ $t("msg.clearup") }}</a>
       </div>
 
-      <div class="notification is-warning" v-show="isSent">
+      <div class="notification is-link" v-show="isSent">
         {{ $t("msg.finalize.success") }}
       </div>
       <div class="center">
@@ -33,7 +33,7 @@
 
       <div class="center" v-show="toDrag" id="filebox2" v-bind:class="{'drag-over':isDragOver}"
          @dragover.prevent="isDragOver=true" @dragleave.prevent="isDragOver=false" @drop.prevent="drop">
-        <p class="is-size-5 has-text-link">{{ $t("msg.finalize.dropMsg") }}</p>
+        <p class="is-size-5 has-text-link has-text-weight-semibold">{{ $t("msg.finalize.dropMsg") }}</p>
       </div>
 
     </section>
@@ -79,19 +79,23 @@ export default {
         
         try{
           content = fs.readFileSync(fn.path).toString();
-          JSON.parse(content)
+          let data = JSON.parse(content)
+          tx_id = data.id
+          this.$log.debug('tx to finalize is ' + tx_id)
         }catch(e){
           this.$log.error('read tx file error:' + e)
-          this.errors.push(this.$t('msg.finalize.FileType'))
+          this.errors.push(this.$t('msg.finalize.WrongFileType'))
           return
         }
 
         this.isSending = true
         let send = async function(){
           try{
-            let res = await this.$walletService.finalizeTransaction(content)
-            tx_id = res.data.id
-            let res2 = await this.$walletService.postTransaction(res.data, true)
+            let res = await this.$walletService.finalizeTransaction(JSON.parse(content))
+            console.log(res)
+            tx_id = res.data.result.Ok.id
+            let tx = res.data.result.Ok.tx
+            let res2 = await this.$walletService.postTransaction(tx, true)
             this.isSent = true
             this.$dbService.addPostedUnconfirmedTx(tx_id)
             this.$log.debug(`finalize tx ${tx_id} ok; return:${res.data}`)
@@ -109,8 +113,23 @@ export default {
           }
         }
         send.call(this)
-      }else{
-        this.errors.push(this.$t('msg.finalize.WrongFileType'))
+        //let finalize = async function(){
+        //  try{
+        //    let res = await this.$walletService.finalize(fn.path)
+        //    this.isSent = true
+        //    if(tx_id)this.$dbService.addPostedUnconfirmedTx(tx_id)
+        //    this.$log.debug(`finalize tx ${tx_id} ok; return:${res}`)
+        //  }catch(error){
+        //    this.$log.error('finalize or post error:' + error)        
+        //    this.errors.push(this.$t('msg.finalize.TxFailed'))
+        //  }finally{
+        //    this.isSending = false
+        //    messageBus.$emit('update')
+        //  }
+        //}
+        //finalize.call(this)
+      //}else{
+        //this.errors.push(this.$t('msg.finalize.WrongFileType'))
       }
     },
     clearup(){

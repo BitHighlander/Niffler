@@ -5,29 +5,55 @@ import axios from 'axios'
 require('promise.prototype.finally').shim();
 
 import log from './logger'
-import {grinPath, seedPath, grinNode, chainType, apiSecretPath, walletTOMLPath} from './config'
+import {platform, grinWalletPath, seedPath, grinNode, grinNode2, chainType, apiSecretPath, walletTOMLPath, walletPath, grinRsWallet, nodeExecutable, tempTxDir, gnodeOption} from './config'
 import { messageBus } from '../renderer/messagebus'
+import GnodeService from './gnode'
+import dbService from '../renderer/db'
 
 let ownerAPI
 let listenProcess
+let checkProcess
+//let initRProcess
+let restoreProcess
+let processes = {}
 let client
-const wallet_host = 'http://localhost:3420'
+let password_
+const walletHost = 'http://localhost:3420'
+const jsonRPCUrl = 'http://localhost:3420/v2/owner'
+const jsonRPCForeignUrl = 'http://localhost:3420/v2/foreign'
 
 function enableForeignApi(){
     const re = /owner_api_include_foreign(\s)*=(\s)*false/
-    let c = fs.readFileSync(walletTOMLPath).toString()
-    if(c.search(re) != -1){
-        log.debug('Enable ForeignApi to true')
-        c = c.replace(re, 'owner_api_include_foreign = true')
-        fs.writeFileSync(walletTOMLPath, c)
+    if(fs.existsSync(walletTOMLPath)){
+        let c = fs.readFileSync(walletTOMLPath).toString()
+        if(c.search(re) != -1){
+            log.debug('Enable ForeignApi to true')
+            c = c.replace(re, 'owner_api_include_foreign = true')
+            fs.writeFileSync(walletTOMLPath, c)
+        }
     }
 }
 
-class WalletSerice {
+function execPromise(command) {
+    return new Promise(function(resolve, reject) {
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve(stdout.trim());
+        });
+    });
+}
+
+function addQuotations(s){
+    return '"' + s +'"'
+}
+class WalletService {
     static initClient() {
         if(fs.existsSync(apiSecretPath)){
             client = axios.create({
-                baseURL: wallet_host,
+                baseURL: walletHost,
                 auth: {
                     username: 'grin',
                     password: fs.readFileSync(apiSecretPath).toString()
@@ -35,78 +61,133 @@ class WalletSerice {
             })
         }
     }
-    static getNodeHeight(){
-        return client.get('/v1/wallet/owner/node_height')
-    }
-    static getSummaryInfo(minimum_confirmations){
-        const url = `/v1/wallet/owner/retrieve_summary_info?refresh&minimum_confirmations=${minimum_confirmations}`
-        return client.get(url)
-    }
-    static getTransactions(){
-        return client.get('/v1/wallet/owner/retrieve_txs?refresh')
-    }
-    static getCommits(show_spent=true){
-        const url = show_spent?
-            '/v1/wallet/owner/retrieve_outputs?refresh&show_spent':
-            '/v1/wallet/owner/retrieve_outputs?refresh'
-        return client.get(url)
-    }
-    static cancelTransactions(tx_id){
-        const url = `/v1/wallet/owner/cancel_tx?tx_id=${tx_id}`
-        return client.post(url)
-    }
-    static receiveTransaction(tx_data){
-        return client.post('/v1/wallet/foreign/receive_tx', tx_data)
-    }
-    static issueSendTransaction(tx_data){
-        return client.post('/v1/wallet/owner/issue_send_tx', tx_data)
-    }
-    static finalizeTransaction(tx_data){
-        return client.post('/v1/wallet/owner/finalize_tx', tx_data)
-    }
-    static postTransaction(tx_data, isFluff){
-        const url = isFluff?
-            '/v1/wallet/owner/post_tx?fluff':
-            '/v1/wallet/owner/post_tx'
-        return client.post(url, tx_data)
+
+    static setPassword(password){
+        password_ = password
     }
 
-    static start(password){
-        WalletSerice.stop()
+    static passwordUndefined(){
+        if(!password_)return true
+        return false
+    }
+
+    static jsonRPC(method, params, isForeign){
+        const headers = {
+            'Content-Type': 'application/json'
+        }
+        const body = {
+            jsonrpc: "2.0",
+            id: +new Date(),
+            method: method,
+            params: params,
+        }
+        const url = isForeign?jsonRPCForeignUrl:jsonRPCUrl
+        return client.post(url, body, headers)
+    }
+
+    static getNodeHeight(){
+        if(client){
+            return WalletService.jsonRPC('node_height', [], false)
+        }
+    }
+
+    static getSummaryInfo(minimum_confirmations){
+        return WalletService.jsonRPC('retrieve_summary_info', [true, minimum_confirmations], false)
+    }
+
+    static getTransactions(toRefresh, tx_id, tx_salte_id){
+        return WalletService.jsonRPC('retrieve_txs', [toRefresh, tx_id, tx_salte_id], false)
+    }
+
+    static getCommits(include_spent, toRefresh, tx_id){
+        return WalletService.jsonRPC('retrieve_outputs', [include_spent, toRefresh, tx_id], false)
+    }
+
+    static cancelTransactions(tx_id, tx_salte_id){
+        return WalletService.jsonRPC('cancel_tx', [tx_id, tx_salte_id])
+    }
+
+    static receiveTransaction(slate, account, message){
+        return WalletService.jsonRPC('receive_tx', [slate, account, message], true)
+    }
+
+    static issueSendTransaction(tx_data){
+        return WalletService.jsonRPC('init_send_tx',  {'args': tx_data})
+    }
+
+    static lock_outputs(slate, participant_id){
+        return WalletService.jsonRPC('tx_lock_outputs',  [slate, participant_id])
+    }
+
+    static finalizeTransaction(slate){
+        return WalletService.jsonRPC('finalize_tx',  [slate])
+    }
+
+    static postTransaction(tx, isFluff){
+        return WalletService.jsonRPC('post_tx',  [tx, isFluff])
+    }
+
+    static startOwnerApi(password, grinNodeToConnect){
+        //WalletService.stopProcess('ownerAPI')
         enableForeignApi()
         log.debug(`grinPath: ${grinPath}; grinNode: ${grinNode}`)
         ownerAPI = execFile(grinPath, ['wallet', '-r', grinNode, 'owner_api'])
+
+        if(platform === 'linux'){
+            ownerAPI = execFile(grinWalletPath, ['-r', grinNodeToConnect, 'owner_api'])
+        }else{
+            const cmd = platform==='win'? `${grinWalletPath} -r ${grinNodeToConnect} --pass ${addQuotations(password)} owner_api`:
+                                        `${grinWalletPath} -r ${grinNodeToConnect} owner_api`
+            //log.debug(`platform: ${platform}; start owner api cmd: ${cmd}`)
+            ownerAPI =  exec(cmd)
+        }
+        processes['ownerAPI'] = ownerAPI
+        log.debug('ownerAPIProcessPID: ' + ownerAPI.pid)
+        if(platform==='win'){
+            localStorage.setItem('ownerAPIProcessPID', ownerAPI.pid)
+        }
+
         ownerAPI.stdout.on('data', (data)=>{
             log.debug('start owner api return: '+data)
             ownerAPI.stdin.write(password+'\n')
             localStorage.setItem('OwnerAPIPID', ownerAPI.pid)
+            if(platform!='win'){ownerAPI.stdin.write(password+'\n')}
+            localStorage.setItem('ownerAPIProcessPID', ownerAPI.pid)
         })
         ownerAPI.stderr.on('data', (data) => {
             log.error('start owner_api got stderr: ' + data)
         })
     }
 
-    static stop(){
-        if(ownerAPI){
-            ownerAPI.kill('SIGKILL')
-            log.debug('kill owner_api')
-        }
-        const pid = localStorage.getItem('OwnerAPIPID')
-        localStorage.removeItem('OwnerAPIPID')
-        if(pid) {
-            try{
-                process.kill(pid, 'SIGKILL')
-            }catch(e){
-                log.error(`error when kill ownerApi ${pid}: ${e}` )
-            }
-        }
+    static restartOwnerApi(password, grinNodeToConnect){
+        WalletService.stopProcess(ownerAPI)
+        setTimeout(()=>{
+            WalletService.startOwnerApi(password, grinNodeToConnect)
+        }, 500)
     }
     
+    static startListen(gnode, password=password_){
+        WalletService.stopProcess('listen')
+        if(platform==='linux'){
+            listenProcess =  execFile(grinWalletPath, ['-r', gnode, '-e', 'listen'])
+        }else{
+            const cmd = platform==='win'? `${grinWalletPath} -r ${gnode} -e --pass ${addQuotations(password)} listen`:
+                                        `${grinWalletPath} -r ${gnode} -e listen`
+            //log.debug(`platform: ${platform}; start listen cmd: ${cmd}`)
+            listenProcess =  exec(cmd)
+        }
+        processes['listen'] = listenProcess
+        if(platform==='win'){
+            localStorage.setItem('listenProcessPID', listenProcess.pid)
+        }
+
     static startListen(password){
         WalletSerice.stopListen()
         listenProcess =  execFile(grinPath, ['wallet', '-e', 'listen'])
         listenProcess.stdout.on('data', (data)=>{
-            listenProcess.stdin.write(password+'\n')
+            if(platform!='win'){
+                listenProcess.stdin.write(password+'\n')
+            }
             localStorage.setItem('listenProcessPID', listenProcess.pid)
         })
         listenProcess.stderr.on('data', (data) => {
@@ -114,39 +195,43 @@ class WalletSerice {
         })
     }
 
-    static stopListen(){
-        if(listenProcess){
-            listenProcess.kill('SIGKILL')
-            log.debug('kill wallet listen process')
-        }
-        const pid = localStorage.getItem('listenProcessPID')
-        localStorage.removeItem('listenProcessPID')
-        if(pid) {
-            try{
-                process.kill(pid, 'SIGKILL')
-            }catch(e){
-                log.error(`error when kill listen process ${pid}: ${e}` )
+    static stopAll(){
+        for(var ps in processes){
+            log.debug('stopall ps: '+ ps)
+            if(processes[ps]){
+                log.debug('stopall try to kill '+ ps)
+                WalletService.stopProcess(ps)
             }
         }
+
+        if(!gnodeOption.useLocalGnode ||
+           (!gnodeOption.background && dbService.getLocalGnodeStatus()=='running')){
+            log.debug('Try to stop local gnode.')
+            GnodeService.stopGnode()
+        }
     }
-    static stopAll(){
-        WalletSerice.stopListen()
-        WalletSerice.stop()
-    }
+
     static isExist(){
         return fs.existsSync(seedPath)?true:false
     }
 
     static new(password){
-        const cmd = `${grinPath} wallet -r ${grinNode} init`
+        //const cmd = platform==='win'? `${grinWalletPath} -r ${grinNode} --pass ${addQuotations(password)} init`:
+        //                              `${grinWalletPath} -r ${grinNode} init`
+        const cmd = platform==='win'? `${grinWalletPath} --pass ${addQuotations(password)} init`:
+                                      `${grinWalletPath} init`
+        log.debug(`function new: platform: ${platform}; grin bin: ${grinWalletPath}`);
         let createProcess = exec(cmd)
         createProcess.stdout.on('data', (data) => {
-            var output = data.toString()
+            let output = data.toString()
+            //log.debug('init process return: '+output)
             if (output.includes("Please enter a password for your new wallet")){
+                log.debug('function new: time to entry password.')
                 createProcess.stdin.write(password + "\n");
                 createProcess.stdin.write(password + "\n");
             }
             if(output.includes("Invalid Arguments: Not creating wallet - Wallet seed file exists")){
+                log.debug('function new: walletExisted')
                 return messageBus.$emit('walletExisted')
             }
             if(output.includes("Please back-up these words in a non-digital format.")){
@@ -160,14 +245,196 @@ class WalletSerice {
                 var wordSeedWithLog = wordSeed;
                 var wordSeedWithoutLog = wordSeedWithLog.substring(wordSeedWithLog.indexOf("==")+1);
                 wordSeedWithoutLog = wordSeedWithoutLog.trim();
-                wordSeedWithoutLog = wordSeedWithoutLog.replace("= ","");
+                wordSeedWithoutLog = wordSeedWithoutLog.replace("= ","").trim();
+                //log.debug(`wordSeed: ${wordSeed}; wordSeedWithoutLog: ${wordSeedWithoutLog}`)
+                log.debug(`function new: walletCreated with seed of length ${wordSeedWithoutLog.length}.`)
                 return messageBus.$emit('walletCreated', wordSeedWithoutLog)
             }
         })
         createProcess.stderr.on('data', (data) => {
             log.error('Process:init new wallet got stderr: ' + data)
+            return messageBus.$emit('walletCreateFailed', data)
         })
     }
+
+    static createSlate(amount, version){
+        fse.ensureDirSync(tempTxDir)
+
+        return new Promise(function(resolve, reject) {
+            let fn = path.join(tempTxDir, String(Math.random()).slice(2) + '.temp.tx')
+            WalletService.send(amount, 'file', fn, version).then((data)=>{
+                fs.readFile(fn, function(err, buffer) {
+                    if (err) return reject(err)
+                    //fse.remove(fn)
+                    return resolve(JSON.parse(buffer.toString()))
+                });
+            }).catch((err)=>{
+                return reject(err)
+            })
+        })
+    }
+
+    static finalizeSlate(slate){
+        let fn = path.join(tempTxDir, String(Math.random()).slice(2) + '.temp.tx.resp')
+        fs.writeFileSync(fn, JSON.stringify(slate))
+        return WalletService.finalize(fn)
+    }
+
+    static recover(seeds, password){
+        if(platform==='win'){
+            return  WalletService.recoverOnWindows(seeds, password)
+        }
+        let rcProcess
+        let args = ['--node_api_http_addr', grinNode, 'node_api_secret_path', path.resolve(apiSecretPath),
+            '--wallet_dir', path.resolve(walletPath), '--seeds', seeds,
+            '--password', password]
+        try{
+            rcProcess = fork(grinRsWallet, args)
+        }catch(e){
+            return log.error('Error during fork to recover: ' + e )
+        }
+        rcProcess.on('message', (data) => {
+            let ret = data['ret']
+            log.debug('Recover message: ' + ret)
+            messageBus.$emit('walletRecoverReturn', ret)
+        });
+
+        rcProcess.on('error', (err) => {
+            log.error(`Recover stderr: ${err}`);
+          });
+
+        rcProcess.on('exit', (code, sginal) => {
+            log.debug(`Recover exit: ${code}`);
+        });
+    }
+
+    static recoverOnWindows(seeds, password){
+        let args = [grinRsWallet, '--node_api_http_addr', grinNode2,
+            '--node_api_secret_path', path.resolve(apiSecretPath),
+            '--wallet_dir', path.resolve(walletPath),
+            '--seeds', seeds, '--password', password]
+        let rcProcess = spawn(nodeExecutable, args)
+        rcProcess.stdout.on('data', function(data){
+            let output = data.toString().trim()
+            log.debug('rcProcess stdout:', output)
+            let msg
+            if(output ==='success'){
+                msg = 'ok'
+            }else if(output ==='"BIP39 Mnemonic (word list) Error"'){
+                msg = 'invalidSeeds'
+            }else{
+                msg = data
+            }
+            log.debug('msg', msg)
+            messageBus.$emit('walletRecoverReturn', msg)
+        })
+        rcProcess.stderr.on('data', function(data){
+            let output = data.toString()
+            log.debug('rcProcess stderr:', output)
+        })
+    }
+
+    static check(cb, gnode){
+        let grin = grinWalletPath
+        if(platform==='win'){
+            grin = grinWalletPath.slice(1,-1)
+        }
+        checkProcess = spawn(grin, ['-r', gnode, '-p', password_, 'check', '-d']);
+        let ck = checkProcess
+        processes['check'] = checkProcess
+        localStorage.setItem('checkProcessPID', checkProcess.pid)
+
+        ck.stdout.on('data', function(data){
+            let output = data.toString()
+            cb(output)
+        })
+        ck.stderr.on('data', function(data){
+            let output = data.toString()
+            cb(output)
+        })
+        ck.on('close', function(code){
+            log.debug('grin wallet check exists with code: ' + code);
+            if(code==0){return messageBus.$emit('walletCheckFinished')}
+        });
+    }
+
+    static restore(password, cb){
+        let grin = grinWalletPath
+        if(platform==='win'){
+            grin = grinWalletPath.slice(1,-1)
+        }
+        restoreProcess = spawn(grin, ['-r', grinNode2, '-p', password, 'restore']);
+        let rs = restoreProcess
+        processes['restore'] = restoreProcess
+        localStorage.setItem('restoreProcessPID', restoreProcess.pid)
+
+        log.debug('grin wallet restore process running with pid: ' + restoreProcess.pid);
+
+        rs.stdout.on('data', function(data){
+            let output = data.toString()
+            cb(output)
+        })
+        rs.stderr.on('data', function(data){
+            let output = data.toString()
+            cb(output)
+        })
+        rs.on('close', function(code){
+            log.debug('grin wallet restore exists with code: ' + code);
+            if(code==0){return messageBus.$emit('walletRestored')}
+        });
+    }
+
+    //https://github.com/mimblewimble/grin-wallet/issues/110
+    //static initR(seeds, newPassword){
+    //    log.debug(grinWalletPath)
+    //    initRProcess = spawn(grinWalletPath, ['init', '-r']);
+    //    localStorage.setItem('initRProcessPID', initRProcess.pid)
+    //    initRProcess.stdout.on('data', (data) => {
+    //        let output = data.toString()
+    //        log.debug('Wallet initR process return: ' + output)
+    //        if (output.includes("Please enter your recovery phrase:")){
+    //            log.debug('function initR: time to entry seeds.')
+    //            initRProcess.stdin.write(seeds + "\n");
+    //        }
+    //        if (output.includes("Recovery word phrase is invalid")){
+    //            log.debug('function initR: invalid seeds.')
+    //            stopProcess('initR')
+    //            return messageBus.$emit('invalidSeeds')
+    //        }
+    //        if (output.startsWith("Password:")){
+    //            log.debug('function initR: time to entry password.')
+    //            initRProcess.stdin.write(newPassword + "\n");
+    //            initRProcess.stdin.write(newPassword + "\n");
+    //        }
+    //        if(output.includes("Command 'init' completed successfully")){
+    //            log.debug('function initR: wallet initRed.')
+    //            return messageBus.$emit('walletInitRed')
+    //        }
+    //    })
+    //}
+
+    static stopProcess(processName){
+        let pidName = `${processName}ProcessPID`
+        const pid = localStorage.getItem(pidName)
+        log.debug(`try to kill ${processName} with pid (get from ${pidName}) : ${pid}`)
+        localStorage.removeItem(pidName)
+
+        if(platform==='win'&&pid){
+            return exec(`taskkill /pid ${pid} /f /t`)
+        }
+
+        if(processes[processName]){
+            processes[processName].kill('SIGKILL')
+            log.debug(`kill ${processName}`)
+        }
+        if(pid) {
+            try{
+                process.kill(pid, 'SIGKILL')
+            }catch(e){
+                log.error(`error when kill ${processName} ${pid}: ${e}` )
+            }
+        }
+    }
 }
-WalletSerice.initClient()
-export default WalletSerice
+WalletService.initClient()
+export default WalletService

@@ -22,7 +22,7 @@
           </form>
         </div>
       </div>
-      <div v-for="tx in current_txs" style="margin-top: 20px">
+      <div v-for="tx in current_txs"  :key="tx.id" style="margin-top: 20px">
         <div class="level">
           <div class="level-left">
             <div>
@@ -122,9 +122,10 @@
     },
     methods: {
       getTxs() {
-        this.$walletService.getTransactions()
+        this.$walletService.getTransactions(true, null, null)
           .then((res) => {
-            this.total_txs = this.processTxs(res.data[1].reverse())
+            let data = res.data.result.Ok[1].reverse()
+            this.total_txs = this.processTxs(data)
             this.current_txs = this.total_txs.slice(0, this.count_per_page)
             if (this.total_txs.length%this.count_per_page ==0){
               this.pages_count = parseInt(this.total_txs.length/this.count_per_page)
@@ -217,12 +218,16 @@
         this.current_txs = this.total_txs.slice(s, s+this.count_per_page)
       },
 
-      cancel(tx_id){
-        this.$walletService.cancelTransactions(tx_id)
+      cancel(tx_slate_id){
+        this.$walletService.cancelTransactions(null, tx_slate_id)
           .then((res) => {
-            messageBus.$emit('update')
-            this.openMsg = true
-            this.$log.debug(`Cancel tx ${tx_id} ok return:${res.data}`)
+            if(res.data.result.Ok === null){
+              messageBus.$emit('update')
+              this.openMsg = true
+              this.$log.debug(`Cancel tx ${tx_id} ok return:${res.data}`)
+            }else{
+              this.$log.error('cancelTransactions ' + tx_slate_id + ' error:' + JSON.stringify(res))
+            }
           })
           .catch((error) => {
             this.$log.error('cancelTransactions error:' + error)
@@ -230,8 +235,7 @@
               let resp = error.response      
               this.$log.error(`resp.data:${resp.data}; status:${resp.status};headers:${resp.headers}`)
             }
-          }
-          )        
+          })        
       },
     }
   }

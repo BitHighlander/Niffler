@@ -1,3 +1,5 @@
-The mac version of grin binaries is grin v1.0.3 (https://github.com/mimblewimble/grin/releases/tag/v1.0.3),
+The Mac version of grin node binaries is grin v2.0.0(https://github.com/mimblewimble/grin/releases/tag/v2.0.0).
+Downloaded from (https://github.com/mimblewimble/grin/releases/download/v2.0.0/grin-v2.0.0-macos.tar.gz).
 
-downloaded from https://github.com/mimblewimble/grin/releases/download/v1.0.3/grin-v1.0.3-514864288-osx.tgz
+The Mac version of grin-wallet binaries is grin-wallet v2.0.0(https://github.com/mimblewimble/grin-wallet/releases/tag/v2.0.0).
+Downloaded from (https://github.com/mimblewimble/grin-wallet/releases/download/v2.0.0/grin-wallet-v2.0.0-macos.tar.gz).

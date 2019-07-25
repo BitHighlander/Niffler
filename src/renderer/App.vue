@@ -6,15 +6,17 @@
             <summary-info></summary-info>
           </div>
           
-          <div class="dropdown column is-offset-1 is-1" style="margin-top: auto;" 
+          <div class="dropdown column is-1" style="margin-left:25px;margin-top: auto;" 
             v-bind:class="{'is-active':isDroppingDown}" >
             <div class="dropdown-trigger" >
-              <button class="button is-link is-outlined" aria-haspopup="true" aria-controls="dropdown-menu"
-                @click="isDroppingDown=!isDroppingDown;isDroppingDown2=false">
+              <button class="button is-link is-outlined" v-bind:class="{'is-small2':isRu}"
+                aria-haspopup="true" aria-controls="dropdown-menu"
+                @click="isDroppingDown=!isDroppingDown;isDroppingDown2=false;isDroppingDown3=false">
                 {{ $t("msg.send") }}
               </button>
             </div>
-            <div  class="dropdown-menu" id="dropdown-menu" role="menu" style="left:12px;top:80%">
+
+            <div class="dropdown-menu" id="dropdown-menu" role="menu" style="left:12px;top:80%">
               <div class="dropdown-content">
                 <a href="#" class="dropdown-item" @click="openFileSend = true">
                   {{ $t("msg.app.create") }}
@@ -31,11 +33,12 @@
           </div>
 
           &nbsp; &nbsp; 
-          <div class="dropdown column column is-1" style="margin-top: auto;" 
+          <div class="dropdown column column is-1" style="margin-left:-5px;margin-top:auto;" 
             v-bind:class="{'is-active':isDroppingDown2}" >
             <div class="dropdown-trigger" >
-              <button class="button is-link is-outlined" aria-haspopup="true" aria-controls="dropdown-menu"
-                @click="isDroppingDown2=!isDroppingDown2;isDroppingDown=false">
+              <button class="button is-link is-outlined" v-bind:class="{'is-small2':isRu}"
+                aria-haspopup="true" aria-controls="dropdown-menu"
+                @click="isDroppingDown2=!isDroppingDown2;isDroppingDown=false;isDroppingDown3=false">
                 {{ $t("msg.receive") }}
               </button>
             </div>
@@ -50,13 +53,55 @@
               </div>
             </div>
           </div>
-          
-          <div class="column is-offset-2 is-2">
+
+          <div class="column column is-1" style="margin-top: auto; margin-left:25px;">
+           
+            <button class="button is-link is-outlined" v-bind:class="{'is-small2':isRu}" @click="openHedwigV1 = true">
+               <span class="icon-running icon-status animated infinite pulse delay-2s" v-if="hedwigRunning"></span>
+               <span class="icon-failed icon-status animated infinite pulse delay-2s" v-if="hedwigFailed"></span>
+               {{ $t("msg.app.hedwig") }}
+            </button>
+
+          </div>
+
+          <div class="column is-offset-1 is-2" style="margin-left:40px;">
             <div class="level">
               <p class="is-size-7 tag is-warning animated" v-bind:class="{headShake: isAnimate}" style="animation-iteration-count:3">
-                {{ $t("msg.app.height") }}:{{height}}</p>
+                {{ $t("msg.app.height") }} ({{getGnodeLocationDisplay()}}):{{height}}</p>
               &nbsp;
-              <a class="button is-small is-link is-outlined" @click.prevent="logout">{{ $t("msg.logout") }}</a>
+              <!--<a class="button is-small is-link is-outlined" @click.prevent="logout">{{ $t("msg.logout") }}</a>-->
+              <div class="dropdown is-right" v-bind:class="{'is-active':isDroppingDown3}">
+                <div class="dropdown-trigger">
+                  <button class="button is-small is-link is-outlined" aria-haspopup="true" aria-controls="dropdown-menu"
+                  @click="isDroppingDown3=!isDroppingDown3;isDroppingDown=false;isDroppingDown2=false" style="width:50px">
+                    <span>{{ $t("msg.more") }}</span>
+                  </button>
+                </div>
+                <div class="dropdown-menu" id="dropdown-menu" role="menu" style="min-width:0">
+                  <div class="dropdown-content">
+                    <a href="#" class="dropdown-item" style="line-height: 1.2;font-size: 0.8rem;" 
+                      @click="openCheck = true">
+                      {{ $t("msg.check.title") }}
+                    </a>
+
+                    <a href="#" class="dropdown-item" style="line-height: 1.2;font-size: 0.8rem;" 
+                      @click="openGnode = true">
+                      {{ $t("msg.localNode") }}
+                    </a>
+                    
+                    <a href="#" class="dropdown-item" style="line-height: 1.2;font-size: 0.8rem;" 
+                      @click="openLang=true">
+                      {{ $t("msg.lang.title") }}
+                    </a>
+
+                    <hr class="dropdown-divider">
+                    <a href="#" class="dropdown-item" style="line-height: 1.2;font-size: 0.8rem;" 
+                       @click.prevent="logout">
+                      {{ $t("msg.logout") }}
+                    </a>
+                  </div>
+                </div>
+              </div>
 
             </div>
           </div>
@@ -71,6 +116,10 @@
       <http-send :showModal="openHttpSend"></http-send>
       <file-send :showModal="openFileSend"></file-send>
       <finalize :showModal="openFinalize"></finalize>
+      <hedwig-v1 :showModal="openHedwigV1"></hedwig-v1>
+      <check :showModal="openCheck"></check>
+      <lang :showModal="openLang"></lang>
+      <gnode :showModal="openGnode"></gnode>
     </div>
     <landing v-bind:walletExist="walletExist" v-else></landing>
   </div>
@@ -88,9 +137,13 @@
   import HttpReceive from '@/components/HttpReceive'
   import FileSend from '@/components/FileSend'
   import Finalize from '@/components/Finalize'
+  import HedwigV1 from '@/components/HedwigV1'
+  import Check from '@/components/Check'
+  import Lang from '@/components/Lang'
+  import Gnode from '@/components/Gnode'
   import Landing from '@/components/Landing'
   import checkUpdate from '../shared/updateChecker'
-  import {downloadUrl} from '../shared/config'
+  import {downloadUrl, locale, gnodeOption} from '../shared/config'
 
   const {ipcRenderer} = require('electron')
 
@@ -106,7 +159,11 @@
       HttpReceive,
       FileSend,
       Finalize,
-      Landing
+      HedwigV1,
+      Check,
+      Landing,
+      Lang,
+      Gnode
     },
     data(){
       return {
@@ -115,23 +172,45 @@
         openHttpSend: false,
         openFileSend: false,
         openFinalize: false,
+        openHedwigV1: false,
+        openCheck: false,
+        openLang:false,
+        openGnode:false,
+
         isDroppingDown: false,
         isDroppingDown2: false,
+        isDroppingDown3: false,
         ownerApiRunning: false,
         height:null,
         isAnimate:false,
         walletExist:false,
+        hedwigRunning:false,
+        hedwigFailed:false,
+
+        isGnodeLocal: false,
+        isRu: false
     }},
     mounted() {
       this.checkNewVersion()
-      this.checkOwnerApi()
-      this.getHeight()
       if(this.$walletService.isExist()){
         this.walletExist = true
       }
+      this.getHeight()
+      this.updateIsLocalGnode()
       this.$log.debug(`Render main window mounted:height ${this.height}; owner_api running?${this.ownerApiRunning};wallet exists? ${this.walletExist}`)
     },
     created () {
+      this.checkOwnerApi()
+
+      if(locale==='ru'){
+        this.isRu = true
+      }
+      messageBus.$on('selectLocale', (locale)=>{
+        if(locale==='ru')this.isRu = true
+        else{
+          this.isRu = false
+        }
+      })
       messageBus.$on('close', (window)=>{
         if(window =='windowReceive'){
           this.openReceive = false
@@ -148,14 +227,35 @@
         if(window =='windowHttpReceive'){
           this.openHttpReceive = false
         }
+        if(window =='windowHedwigV1'){
+          this.openHedwigV1 = false
+        }
+        if(window =='windowCheck'){
+          this.openCheck = false
+        }
+        if(window =='windowLang'){
+          this.openLang = false
+        }
+        if(window =='windowGnode'){
+          this.openGnode = false
+        }
+      })
+      messageBus.$on('restoredThenLogin', ()=>{
+        this.$log.info('wallet restored and now to login')
+        this.walletExist = true
       })
       messageBus.$on('logined', ()=>{
         this.$log.info('app.vue got user logined event')
         this.$walletService.initClient()
         this.ownerApiRunning = true
         this.getHeight()
+        messageBus.$emit('update')
       })
-      messageBus.$on('update', ()=>this.getHeight())
+      messageBus.$on('update', ()=>{
+        this.getHeight()
+        this.updateIsLocalGnode()
+        }
+      )
       messageBus.$on('walletCreateFinished', ()=>{
         this.$log.info('app.vue got walletCreateFinished event')
         this.walletExist = true
@@ -165,6 +265,15 @@
         this.$log.warn('Found walletExisted during init new one')
         this.walletExist = true
       })
+      messageBus.$on('hedwigRunning', ()=>{
+        this.hedwigRunning = true
+        this.hedwigFailed = false
+      })
+      messageBus.$on('hedwigFailed', ()=>{
+        this.hedwigRunning= false
+        this.hedwigFailed = true
+      })
+      
     },
     
     watch: {
@@ -173,7 +282,7 @@
           setTimeout(
             ()=>{
               this.isDroppingDown = false}, 
-            4*1000)
+            5*1000)
         }
       },
       isDroppingDown2:function(newVal, oldVal){
@@ -181,12 +290,20 @@
           setTimeout(
             ()=>{
               this.isDroppingDown2 = false}, 
-            4*1000)
+            5*1000)
+        }
+      },
+      isDroppingDown3:function(newVal, oldVal){
+        if(newVal){
+          setTimeout(
+            ()=>{
+              this.isDroppingDown3 = false}, 
+            5*1000)
         }
       },
       ownerApiRunning:function(newVal, old){
         if(newVal){
-          ipcRenderer.send('resize', 800, 800)
+          ipcRenderer.send('resize', 800, 880)
           this.autoRefresh(60*2.5*1000)
         }else{
           ipcRenderer.send('resize', 600, 480)
@@ -198,8 +315,13 @@
       }
     },
     methods: {
+      lang(){
+        this.$i18n.locale = 'en'
+      },
       checkOwnerApi(){
-        this.$walletService.getNodeHeight().then(
+        let ret = this.$walletService.getNodeHeight()
+        if(!ret){return false}
+        ret.then(
           (res) =>{
             this.ownerApiRunning = true
           }).catch((error)=>{
@@ -209,14 +331,26 @@
       getHeight(){
         this.$walletService.getNodeHeight().then(
           (res) =>{
-            this.height = res.data[0]
-          }).catch((error)=>{})
+            this.height = parseInt(res.data.result.Ok.height)
+          }).catch((error)=>{
+            this.$log.error(error)
+          })
       },
+
+      updateIsLocalGnode(){
+        //console.log(this.$dbService.getGnodeLocation())
+        if(this.$dbService.getGnodeLocation() == 'local'){
+          this.isGnodeLocal = true
+        }else{
+            this.isGnodeLocal = false
+        }
+      },
+
       logout(){
         this.$log.debug('logout')
         ipcRenderer.send('quit')
       },
-
+      
       autoRefresh(interval){
         setInterval(()=>{
           if(this.ownerApiRunning){
@@ -224,6 +358,14 @@
           }
         }, interval)
       },
+      getGnodeLocationDisplay(){
+        if(this.isGnodeLocal){
+          return this.$t('msg.local')
+        }
+        return this.$t('msg.remote')
+        
+      },
+
       async checkNewVersion(){
         let toUpdate = await checkUpdate()
         if(toUpdate){
@@ -247,4 +389,28 @@
 </script>
 
 <style>
+.icon-running{
+  background: #00aa72;
+  border-color: #e5f8f1;
+}
+.icon-failed{
+  background: #D8000C;
+  border-color: #FFBABA;
+}
+.icon-status{
+  display: inline-block;
+  -webkit-border-radius: 25px;
+  -moz-border-radius: 25px;
+  border-radius: 25px;
+  height: 15px;
+  width: 15px;
+  border-width: 4px;
+  border-style: solid;
+  margin-right: 4px;
+  vertical-align: top;
+}
+.button.is-small2 {
+    border-radius: 2px;
+    font-size: 0.675rem;
+}
 </style>

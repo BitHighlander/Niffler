@@ -14,3 +14,7 @@ yarn-error.log
 docs/dist/
 .vscode/*
 .yarnrc
+index.node
+target
+artifacts.json
+Cargo.lock

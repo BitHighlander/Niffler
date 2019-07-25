@@ -8,8 +8,18 @@ import 'animate.css/animate.css'
 import { remote, ipcRenderer} from 'electron'
 
 import walletService from '../shared/wallet'
+import gnodeService from '../shared/gnode'
+import {RemoteGnodeService} from '../shared/gnode'
 import log from '../shared/logger'
 import dbService from '@/db'
+
+import 'vue-awesome/icons'
+import Icon from 'vue-awesome/components/Icon'
+
+Vue.component('icon', Icon)
+
+Vue.gnodeService = Vue.prototype.$gnodeService = gnodeService
+Vue.remoteGnodeService = Vue.prototype.$remoteGnodeService = RemoteGnodeService
 
 Vue.walletService = Vue.prototype.$walletService = walletService
 Vue.dbService = Vue.prototype.$dbService = dbService
@@ -17,16 +27,22 @@ Vue.log = Vue.prototype.$log = log
 
 import en from '../lang/en'
 import zh from '../lang/zh'
+import ru from '../lang/ru'
+import ko from '../lang/ko'
+
 
 Vue.use(VueI18n)
 const messages = {
   en,
-  zh
+  ru,
+  zh,
+  ko
 }
 
+import {locale, gnodeOption} from '../shared/config'
 const i18n = new VueI18n({
-  locale: remote.app.getLocale().toLowerCase().startsWith('zh')?'zh':'en',
-  //locale: 'en',
+  locale: locale,
+  //locale: 'ru',
   messages
 })
 
@@ -53,7 +69,15 @@ new Vue({
   i18n
 }).$mount('#app')
 
+import { messageBus } from '@/messagebus'
+
 ipcRenderer.on('before-quit', ()=>{
   log.debug('Render got msg is about to quit.')
+  messageBus.$emit('quit')
   walletService.stopAll()
 })
+
+if(gnodeOption.useLocalGnode){
+  gnodeService.getStatus().then().catch((err)=>{
+    gnodeService.startGnode()})
+}

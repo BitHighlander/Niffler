@@ -4,7 +4,7 @@
   <div class="modal-background" @click="closeModal"></div>
   <div class="modal-card" style="width:480px">
     <header class="modal-card-head">
-      <p class="modal-card-title is-size-4 has-text-link">{{ $t("msg.receive") }}</p>
+      <p class="modal-card-title is-size-4 has-text-link has-text-weight-semibold">{{ $t("msg.receive") }}</p>
       <button class="delete" aria-label="close" @click="closeModal"></button>
     </header>
     <section class="modal-card-body" style="height:320px;background-color: whitesmoke;">
@@ -17,7 +17,7 @@
 
       <div class="center" v-show="toDrag" id="filebox" v-bind:class="{'drag-over':isDragOver}"
          @dragover.prevent="isDragOver=true" @dragleave.prevent="isDragOver=false" @drop.prevent="drop">
-        <p class="is-size-5 has-text-link">{{ $t("msg.fileReceive.dropMsg") }}</p>
+        <p class="is-size-5 has-text-link has-text-weight-semibold">{{ $t("msg.fileReceive.dropMsg") }}</p>
       </div>
 
     </section>
@@ -77,9 +77,11 @@ export default {
           defaultPath: filePath
         })
         if(fn_output){
-          this.$walletService.receiveTransaction(content)
+          this.$walletService.receiveTransaction(JSON.parse(content), null, null)
               .then( (res) => {
-                fs.writeFileSync(fn_output, JSON.stringify(res.data))
+                console.log(res)
+                let slate = res.data.result.Ok
+                fs.writeFileSync(fn_output, JSON.stringify(slate))
                 messageBus.$emit('update')
                 this.closeModal()
                 this.$log.debug(`Generated tx file ok; return ${res.data}`)

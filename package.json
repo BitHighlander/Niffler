@@ -1,12 +1,15 @@
 {
   "name": "Niffler",
-  "version": "0.1.1",
+  "version": "0.4.2",
   "author": "xiaojay <xiaojay@gmail.com>",
   "description": "Niffler, a grin gui wallet",
   "license": "apache-2.0",
   "main": "./dist/electron/main.js",
   "scripts": {
+    "npm": "npm i",
     "build": "node .electron-vue/build.js && electron-builder",
+    "build-rs": "electron-build-env neon build --release -p ./grinRs",
+    "build-rs-win": "neon build --release -p ./grinRs",
     "build:dir": "node .electron-vue/build.js && electron-builder --dir",
     "build:clean": "cross-env BUILD_TARGET=clean node .electron-vue/build.js",
     "build:web": "cross-env BUILD_TARGET=web node .electron-vue/build.js",
@@ -25,6 +28,16 @@
     "files": [
       "dist/electron/**/*"
     ],
+    "extraFiles": [
+      {
+        "from": "hedwig",
+        "to": "resources/bin/hedwig",
+        "filter": [
+          "**/*",
+          "!test.js"
+        ]
+      }
+    ],
     "dmg": {
       "contents": [
         {
@@ -41,19 +54,33 @@
       ]
     },
     "mac": {
-      "icon": "build/icons/icon.icns",
+      "icon": "build/icons/icon.icns"
+    },
+    "win": {
+      "icon": "build/icons/icon.ico",
+      "target": "nsis",
       "extraFiles": [
         {
-          "from": "resources/bin/mac",
-          "to": "resources/bin/mac",
+          "from": "resources/bin/win",
+          "to": "resources/bin/win",
           "filter": [
             "**/*"
+          ]
+        },
+        {
+          "from": "grinRs",
+          "to": "resources/bin/grinRs",
+          "filter": [
+            "**/*",
+            "!native",
+            "!test.js"
           ]
         }
       ]
     },
-    "win": {
-      "icon": "build/icons/icon.ico"
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "linux": {
       "icon": "build/icons",
@@ -81,21 +108,39 @@
   },
   "dependencies": {
     "animate.css": "^3.7.0",
-    "axios": "^0.18.1",
+    "app-root-dir": "^1.0.2",
+    "axios": "^0.18.0",
     "bulma": "^0.7.4",
+    "electron-build-env": "^0.2.0",
     "electron-log": "^3.0.1",
     "external-ip": "^2.1.1",
+    "externalip": "^1.0.2",
     "fs-extra": "^7.0.1",
+    "fstream": "^1.0.12",
+    "get-folder-size": "^2.0.1",
+    "is-valid-domain": "0.0.5",
+    "js-yaml": ">=3.13.1",
+    "mini-css-extract-plugin": "^0.8.0",
+    "neon-cli": "^0.2.0",
+    "optimist": "^0.6.1",
     "promise.prototype.finally": "^3.1.0",
     "public-ip": "^3.0.0",
+    "querystringify": ">=2.0.0",
+    "socket.io": "^2.1.0",
+    "socket.io-client": "^2.1.0",
+    "socket.io-stream": "^0.9.1",
+    "tail": "^2.0.2",
+    "tar": ">=4.4.2",
+    "tldjs": "^2.3.1",
+    "url-join": "^4.0.0",
+    "urllib": "^2.34.0",
+    "uuid": "^3.2.1",
     "vue": "^2.5.16",
+    "vue-awesome": "^3.5.3",
     "vue-electron": "^1.0.6",
     "vue-i18n": "^8.10.0",
     "vue-moment": "^4.0.0",
-    "vue-truncate-filter": "^1.1.7",
-    "tar": ">=4.4.2",
-    "js-yaml": ">=3.13.1",
-    "querystringify": ">=2.0.0"
+    "vue-truncate-filter": "^1.1.7"
   },
   "devDependencies": {
     "ajv": "^6.5.0",
@@ -119,7 +164,6 @@
     "electron-devtools-installer": "^2.2.4",
     "file-loader": "^1.1.11",
     "html-webpack-plugin": "^3.2.0",
-    "mini-css-extract-plugin": "0.4.0",
     "multispinner": "^0.2.1",
     "node-loader": "^0.6.0",
     "node-sass": "^4.12.0",
