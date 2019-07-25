@@ -1,7 +1,5 @@
 import fs from 'fs'
-const fse = require('fs-extra')
-const path = require('path')
-import {exec, execFile, spawn, fork} from 'child_process'
+import {exec, execFile} from 'child_process'
 
 import axios from 'axios'
 require('promise.prototype.finally').shim();
@@ -63,7 +61,7 @@ class WalletService {
             })
         }
     }
-    
+
     static setPassword(password){
         password_ = password
     }
@@ -86,13 +84,13 @@ class WalletService {
         const url = isForeign?jsonRPCForeignUrl:jsonRPCUrl
         return client.post(url, body, headers)
     }
-    
+
     static getNodeHeight(){
         if(client){
             return WalletService.jsonRPC('node_height', [], false)
         }
     }
-    
+
     static getSummaryInfo(minimum_confirmations){
         return WalletService.jsonRPC('retrieve_summary_info', [true, minimum_confirmations], false)
     }
@@ -128,13 +126,15 @@ class WalletService {
     static postTransaction(tx, isFluff){
         return WalletService.jsonRPC('post_tx',  [tx, isFluff])
     }
- 
+
     static startOwnerApi(password, grinNodeToConnect){
         //WalletService.stopProcess('ownerAPI')
         enableForeignApi()
-        
+        log.debug(`grinPath: ${grinPath}; grinNode: ${grinNode}`)
+        ownerAPI = execFile(grinPath, ['wallet', '-r', grinNode, 'owner_api'])
+
         if(platform === 'linux'){
-            ownerAPI = execFile(grinWalletPath, ['-r', grinNodeToConnect, 'owner_api']) 
+            ownerAPI = execFile(grinWalletPath, ['-r', grinNodeToConnect, 'owner_api'])
         }else{
             const cmd = platform==='win'? `${grinWalletPath} -r ${grinNodeToConnect} --pass ${addQuotations(password)} owner_api`:
                                         `${grinWalletPath} -r ${grinNodeToConnect} owner_api`
@@ -148,6 +148,9 @@ class WalletService {
         }
 
         ownerAPI.stdout.on('data', (data)=>{
+            log.debug('start owner api return: '+data)
+            ownerAPI.stdin.write(password+'\n')
+            localStorage.setItem('OwnerAPIPID', ownerAPI.pid)
             if(platform!='win'){ownerAPI.stdin.write(password+'\n')}
             localStorage.setItem('ownerAPIProcessPID', ownerAPI.pid)
         })
@@ -166,7 +169,7 @@ class WalletService {
     static startListen(gnode, password=password_){
         WalletService.stopProcess('listen')
         if(platform==='linux'){
-            listenProcess =  execFile(grinWalletPath, ['-r', gnode, '-e', 'listen']) 
+            listenProcess =  execFile(grinWalletPath, ['-r', gnode, '-e', 'listen'])
         }else{
             const cmd = platform==='win'? `${grinWalletPath} -r ${gnode} -e --pass ${addQuotations(password)} listen`:
                                         `${grinWalletPath} -r ${gnode} -e listen`
@@ -178,6 +181,9 @@ class WalletService {
             localStorage.setItem('listenProcessPID', listenProcess.pid)
         }
 
+    static startListen(password){
+        WalletSerice.stopListen()
+        listenProcess =  execFile(grinPath, ['wallet', '-e', 'listen'])
         listenProcess.stdout.on('data', (data)=>{
             if(platform!='win'){
                 listenProcess.stdin.write(password+'\n')
@@ -197,14 +203,14 @@ class WalletService {
                 WalletService.stopProcess(ps)
             }
         }
-        
-        if(!gnodeOption.useLocalGnode || 
+
+        if(!gnodeOption.useLocalGnode ||
            (!gnodeOption.background && dbService.getLocalGnodeStatus()=='running')){
             log.debug('Try to stop local gnode.')
             GnodeService.stopGnode()
         }
     }
-    
+
     static isExist(){
         return fs.existsSync(seedPath)?true:false
     }
@@ -214,7 +220,7 @@ class WalletService {
         //                              `${grinWalletPath} -r ${grinNode} init`
         const cmd = platform==='win'? `${grinWalletPath} --pass ${addQuotations(password)} init`:
                                       `${grinWalletPath} init`
-        log.debug(`function new: platform: ${platform}; grin bin: ${grinWalletPath}`); 
+        log.debug(`function new: platform: ${platform}; grin bin: ${grinWalletPath}`);
         let createProcess = exec(cmd)
         createProcess.stdout.on('data', (data) => {
             let output = data.toString()
@@ -292,11 +298,11 @@ class WalletService {
             log.debug('Recover message: ' + ret)
             messageBus.$emit('walletRecoverReturn', ret)
         });
-          
+
         rcProcess.on('error', (err) => {
             log.error(`Recover stderr: ${err}`);
           });
-          
+
         rcProcess.on('exit', (code, sginal) => {
             log.debug(`Recover exit: ${code}`);
         });
@@ -305,7 +311,7 @@ class WalletService {
     static recoverOnWindows(seeds, password){
         let args = [grinRsWallet, '--node_api_http_addr', grinNode2,
             '--node_api_secret_path', path.resolve(apiSecretPath),
-            '--wallet_dir', path.resolve(walletPath), 
+            '--wallet_dir', path.resolve(walletPath),
             '--seeds', seeds, '--password', password]
         let rcProcess = spawn(nodeExecutable, args)
         rcProcess.stdout.on('data', function(data){
@@ -361,7 +367,7 @@ class WalletService {
         let rs = restoreProcess
         processes['restore'] = restoreProcess
         localStorage.setItem('restoreProcessPID', restoreProcess.pid)
-        
+
         log.debug('grin wallet restore process running with pid: ' + restoreProcess.pid);
 
         rs.stdout.on('data', function(data){
@@ -406,7 +412,7 @@ class WalletService {
     //        }
     //    })
     //}
-    
+
     static stopProcess(processName){
         let pidName = `${processName}ProcessPID`
         const pid = localStorage.getItem(pidName)
@@ -416,7 +422,7 @@ class WalletService {
         if(platform==='win'&&pid){
             return exec(`taskkill /pid ${pid} /f /t`)
         }
-        
+
         if(processes[processName]){
             processes[processName].kill('SIGKILL')
             log.debug(`kill ${processName}`)

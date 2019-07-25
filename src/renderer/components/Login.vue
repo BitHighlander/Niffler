@@ -3,7 +3,7 @@
     <div class="hero-body">
       <div class="container">
         <div class="columns is-mobile is-centered">
-          <div class="column is-6" >
+          <div class="column" :class="{'is-7':isLinux, 'is-6':!isLinux}">
             <img src="../assets/logo.png" style="width:64px" class="is-pulled-left">
             <h2 class="title" style="margin-top:24px; margin-left:70px;font-size:1.6rem" >{{ $t("msg.title") }}
               <span class="is-pulled-right" style="font-size:0.75rem">v{{version}}</span>
@@ -12,7 +12,7 @@
         </div>
 
         <div class="columns is-mobile is-centered">
-          <div class="column"  v-bind:class="{'is-8': firstTime, 'is-6': !firstTime }">
+          <div class="column"  v-bind:class="{'is-8': firstTime, 'is-6': !firstTime&&!isLinux, 'is-7': !firstTime&&isLinux}">
             <div class="message is-warning is-small" v-show="firstTime" >
               <div class="message-header">
                 <p>{{ $t("msg.welcome") }}</p>
@@ -43,7 +43,7 @@
             <a class="button is-small is-text is-pulled-right" @click="openGnodeConfig=true">{{ $t("msg.gnodeConfigModal.title") }}</a>
           </div>
         </div>
-      
+
       <remove :showModal="openRemove"></remove>
       <gnode-config-modal :showModal="openGnodeConfig"></gnode-config-modal>
       </div>
@@ -87,7 +87,7 @@ export default {
   },
   methods: {
     tryLogin(){
-      
+
       let setPassword = this.$walletService.setPassword
       let password = this.password
 
@@ -97,13 +97,13 @@ export default {
         let localHeight
         let remoteHeight
         this.$log.debug('Time to select gnode.')
-        this.$log.debug('Use local gnode? ' + gnodeOption.useLocalGnode)  
-        this.$log.debug('Connect method is ' + gnodeOption.connectMethod)  
+        this.$log.debug('Use local gnode? ' + gnodeOption.useLocalGnode)
+        this.$log.debug('Connect method is ' + gnodeOption.connectMethod)
         if(!gnodeOption.useLocalGnode){
           this.$dbService.setGnodeLocation('remote')
           this.$log.debug('use remote grin node.')
           return this.$walletService.startOwnerApi(this.password, grinNode)
-        }  
+        }
         if(gnodeOption.connectMethod ==='localAllTime'){
           this.$dbService.setGnodeLocation('local')
           this.$log.debug('use local grin node.')
@@ -159,7 +159,7 @@ export default {
 
       this.resetErrors()
       },
-    
+
     resetErrors(){
       this.error = false;
     },

@@ -18,28 +18,6 @@ if (process.env.NODE_ENV !== 'development') {
   global.__static = require('path').join(__dirname, '/static').replace(/\\/g, '\\\\')
 }
 
-//https://molunerfinn.com/electron-vue-5/#%E4%B8%8D%E5%90%8C%E5%B9%B3%E5%8F%B0%E7%9A%84%E6%9E%84%E5%BB%BA%E9%85%8D%E7%BD%AE
-if (process.platform === 'win32') {
-  app.setAppUserModelId(pkg.build.appId)
-}
-
-log.debug(`Platform:${process.platform}`)
-
-import {exec, execFile, spawn, fork} from 'child_process'
-if(process.platform!=='win32'){
-  exec('pkill grin-wallet')
-}else{
-  exec('taskkill -f /im grin-wallet.exe')
-}
-
-if(!gnodeOption.useLocalGnode){
-  if(process.platform!=='win32'){
-    exec('pkill grin')
-  }else{
-    exec('taskkill -f /im grin.exe')
-  }
-}
-
 let mainWindow
 let firstQuit = true
 let firstClose = true
@@ -137,10 +115,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', (event)=>{
   log.debug('before-quit')
-  
+
   if(mainWindow){
     mainWindow.webContents.send('before-quit');
-    
+
     if(firstQuit){
       event.preventDefault()
       firstQuit = false
