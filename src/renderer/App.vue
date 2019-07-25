@@ -88,7 +88,12 @@
                       @click="openGnode = true">
                       {{ $t("msg.localNode") }}
                     </a>
-                    
+
+                    <a href="#" class="dropdown-item" style="line-height: 1.2;font-size: 0.8rem;"
+                       @click="openDisplaySeed = true">
+                      {{ $t("msg.displaySeed") }}
+                    </a>
+
                     <a href="#" class="dropdown-item" style="line-height: 1.2;font-size: 0.8rem;" 
                       @click="openLang=true">
                       {{ $t("msg.lang.title") }}
@@ -111,6 +116,7 @@
       <br/>
       <commit v-bind:count_per_page="3" v-bind:nodeHeight="height"></commit>
 
+      <display-seed :showModal="openDisplaySeed"></display-seed>
       <receive :showModal="openReceive"></receive>
       <http-receive :showModal="openHttpReceive"></http-receive>
       <http-send :showModal="openHttpSend"></http-send>
@@ -142,8 +148,10 @@
   import Lang from '@/components/Lang'
   import Gnode from '@/components/Gnode'
   import Landing from '@/components/Landing'
+  import DisplaySeed from "@/components/DisplaySeed";
   import checkUpdate from '../shared/updateChecker'
   import {downloadUrl, locale, gnodeOption} from '../shared/config'
+
 
   const {ipcRenderer} = require('electron')
 
@@ -151,6 +159,7 @@
     name: 'niffler',
     mixins: [mixin],
     components: {
+      DisplaySeed,
       SummaryInfo,
       Transaction,
       Commit,
@@ -167,6 +176,7 @@
     },
     data(){
       return {
+        openDisplaySeed:false,
         openReceive: false,
         openHttpReceive:false,
         openHttpSend: false,
@@ -212,6 +222,9 @@
         }
       })
       messageBus.$on('close', (window)=>{
+        if(window =='windowDisplaySeed'){
+          this.openDisplaySeed = false
+        }
         if(window =='windowReceive'){
           this.openReceive = false
         }

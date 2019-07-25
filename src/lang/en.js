@@ -31,6 +31,7 @@ const messages = {
     node: 'Node',
     remoteNode: 'Remote node',
     localNode: 'Local node',
+    displaySeed: 'Display your seed',
 
     other: 'Others',
 

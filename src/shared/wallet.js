@@ -68,6 +68,9 @@ class WalletService {
         password_ = password
     }
 
+    static getPassword(){
+        return password_
+    }
     static passwordUndefined(){
         if(!password_)return true
         return false
@@ -153,6 +156,76 @@ class WalletService {
         })
         ownerAPI.stderr.on('data', (data) => {
             log.error('start owner_api got stderr: ' + data)
+        })
+    }
+
+    static displaySeed(password, grinNodeToConnect){
+        return new Promise((resolve, reject) => {
+            let tag = " | displaySeed | "
+            log.debug("CHECKPOINT ***************** displaySeed ")
+
+            let responses = []
+            let grinDaemon
+
+            if(platform === 'linux'){
+                grinDaemon = execFile(grinWalletPath, ['-r', grinNodeToConnect, '--pass', password, 'recover', '-d'])
+            }else{
+                const cmd = platform==='win'? `${grinWalletPath} -r ${grinNodeToConnect} --pass ${addQuotations(password)} recover -d`:
+                    `${grinWalletPath} -r ${grinNodeToConnect} recover -d`
+                //log.debug(`platform: ${platform}; get seed cmd: ${cmd}`)
+                grinDaemon =  exec(cmd)
+            }
+
+            let output = {}
+            output.success = false
+
+            grinDaemon.stdout.on('data', function (data) {
+                let payload = data.toString()
+                log.debug('stdout: ' + payload)
+                responses.push(payload)
+
+            })
+
+            grinDaemon.stderr.on('data', function (data) {
+                let payload = data.toString()
+                log.debug('stdout: ' + payload)
+                responses.push(payload)
+            })
+
+            grinDaemon.on('exit', function (code) {
+                log.debug('child process exited with code ' + code.toString())
+                let exitCode = code.toString()
+                if (exitCode == 0) {
+
+                    let responseAll = responses.join(' ')
+                    log.debug("responseAll: ", responseAll)
+                    // let pieces = responseAll.split('Please back-up these words in a non-digital format.')
+                    // log.debug("pieces: ",pieces)
+
+                    var seed = responseAll.substring(
+                        responseAll.lastIndexOf("Your recovery phrase is:"),
+                        responseAll.lastIndexOf("Please back-up these words in a non-digital format.")
+                    );
+                    seed = seed.replace("Your recovery phrase is:", "")
+
+                    log.debug("seed: ", seed)
+                    seed = seed.split(" ")
+                    log.debug("seedArray: ", seed)
+                    if (!seed[0] || seed.length > 24) seed.shift()
+
+                    seed[0] = seed[0].replace("\n\n","")
+                    seed[seed.length - 1] = seed[seed.length - 1].replace("\n\n","")
+
+                    output.responses = responseAll
+                    output.seed = seed
+                    output.success = true
+                } else {
+                    output.error = "Failed to get seed! exit: " + exitCode
+                    output.responses = responses
+                }
+
+                resolve(output)
+            })
         })
     }
 
